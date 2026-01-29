@@ -13,7 +13,7 @@ func NewProductService(repo *repositories.ProductRepository) *ProductService {
 	return &ProductService{repo: repo}
 }
 
-func (s *ProductService) GetAll() ([]models.Product, error) {
+func (s *ProductService) GetAll() ([]models.ProductWithCategory, error) {
 	return s.repo.GetAll()
 }
 

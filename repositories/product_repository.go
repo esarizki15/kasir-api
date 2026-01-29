@@ -14,18 +14,30 @@ func NewProductRepository(db *sql.DB) *ProductRepository {
 	return &ProductRepository{db: db}
 }
 
-func (repo *ProductRepository) GetAll() ([]models.Product, error) {
-	query := "SELECT id, name, price, stock FROM products"
+func (repo *ProductRepository) GetAll() ([]models.ProductWithCategory, error) {
+	query := `
+		SELECT
+			p.id,
+			p.name,
+			p.price,
+			p.stock,
+			p.category_id,
+			c.name AS category_name
+		FROM products p
+		LEFT JOIN categories c ON p.category_id = c.id
+		ORDER BY p.id
+	`
 	rows, err := repo.db.Query(query)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 
-	products := make([]models.Product, 0)
+	products := make([]models.ProductWithCategory, 0)
 	for rows.Next() {
-		var p models.Product
-		err := rows.Scan(&p.ID, &p.Name, &p.Price, &p.Stock)
+		var p models.ProductWithCategory
+		err := rows.Scan(&p.ID, &p.Name, &p.Price, &p.Stock, &p.CategoryID,
+			&p.CategoryName)
 		if err != nil {
 			return nil, err
 		}
