@@ -14,7 +14,7 @@ func NewProductRepository(db *sql.DB) *ProductRepository {
 	return &ProductRepository{db: db}
 }
 
-func (repo *ProductRepository) GetAll() ([]models.ProductWithCategory, error) {
+func (repo *ProductRepository) GetAll(nameFilter string) ([]models.ProductWithCategory, error) {
 	query := `
 		SELECT
 			p.id,
@@ -25,9 +25,16 @@ func (repo *ProductRepository) GetAll() ([]models.ProductWithCategory, error) {
 			c.name AS category_name
 		FROM products p
 		LEFT JOIN categories c ON p.category_id = c.id
-		ORDER BY p.id
 	`
-	rows, err := repo.db.Query(query)
+	args := []interface{}{}
+	if nameFilter != "" {
+		query += " WHERE p.name ILIKE $1"
+		args = append(args, "%"+nameFilter+"%")
+	}
+
+	query += " ORDER BY p.id"
+
+	rows, err := repo.db.Query(query, args...)
 	if err != nil {
 		return nil, err
 	}
