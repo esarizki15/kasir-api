@@ -53,6 +53,11 @@ func main() {
 	transactionService := services.NewTransactionService(transactionRepo)
 	transactionHandler := handlers.NewTransactionHandler(transactionService)
 
+	// Report
+	reportRepo := repositories.NewReportRepository(db)
+	reportService := services.NewReportService(reportRepo)
+	reportHandler := handlers.NewReportHandler(reportService)
+
 	http.HandleFunc("/api/produk", productHandler.HandleProducts)
 	http.HandleFunc("/api/produk/", productHandler.HandleProductByID)
 
@@ -60,6 +65,9 @@ func main() {
 	http.HandleFunc("/api/categories/", categoryHandler.HandleCategoryByID)
 
 	http.HandleFunc("/api/checkout", transactionHandler.HandleCheckout) // POST
+
+	http.HandleFunc("/api/report/hari-ini", reportHandler.HandleTodayReport)
+	http.HandleFunc("/api/report", reportHandler.HandleReportByDate)
 
 	addr := "0.0.0.0:" + config.Port
 	fmt.Println("Server running di", addr)
