@@ -67,7 +67,7 @@ func (r *ReportRepository) GetSummaryByDate(startDate, endDate string) (*models.
 	err := r.DB.QueryRow(`
 		SELECT COALESCE(SUM(total_amount), 0)
 		FROM transactions
-		WHERE DATE(created_at) BETWEEN ? AND ?
+		WHERE created_at::date BETWEEN $1 AND $2
 	`, startDate, endDate).Scan(&summary.TotalRevenue)
 
 	if err != nil {
@@ -78,7 +78,7 @@ func (r *ReportRepository) GetSummaryByDate(startDate, endDate string) (*models.
 	err = r.DB.QueryRow(`
 		SELECT COUNT(*)
 		FROM transactions
-		WHERE DATE(created_at) BETWEEN ? AND ?
+		WHERE created_at::date BETWEEN $1 AND $2
 	`, startDate, endDate).Scan(&summary.TotalTransaksi)
 
 	if err != nil {
@@ -91,7 +91,7 @@ func (r *ReportRepository) GetSummaryByDate(startDate, endDate string) (*models.
 		FROM transaction_details td
 		JOIN products p ON p.id = td.product_id
 		JOIN transactions t ON t.id = td.transaction_id
-		WHERE DATE(t.created_at) BETWEEN ? AND ?
+		WHERE t.created_at::date BETWEEN $1 AND $2
 		GROUP BY p.name
 		ORDER BY total_qty DESC
 		LIMIT 1
