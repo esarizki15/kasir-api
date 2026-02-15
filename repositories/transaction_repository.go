@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"fmt"
 	"kasir-api/models"
+	"time"
 )
 
 type TransactionRepository struct {
@@ -22,13 +23,20 @@ func (repo *TransactionRepository) CreateTransaction(items []models.CheckoutItem
 	defer tx.Rollback()
 
 	totalAmount := 0
-	details := make([]models.TransactionDetail, 0)
+	details := []models.TransactionDetail{}
 
 	for _, item := range items {
-		var productPrice, stock int
-		var productName string
+		var name string
+		var price, stock int
 
-		err := tx.QueryRow("SELECT name, price, stock FROM products WHERE id = $1", item.ProductID).Scan(&productName, &productPrice, &stock)
+		// 🔒 lock row
+		err := tx.QueryRow(`
+			SELECT name, price, stock
+			FROM products
+			WHERE id = $1
+			FOR UPDATE
+		`, item.ProductID).Scan(&name, &price, &stock)
+
 		if err == sql.ErrNoRows {
 			return nil, fmt.Errorf("product id %d not found", item.ProductID)
 		}
@@ -36,35 +44,60 @@ func (repo *TransactionRepository) CreateTransaction(items []models.CheckoutItem
 			return nil, err
 		}
 
-		subtotal := productPrice * item.Quantity
+		if stock < item.Quantity {
+			return nil, fmt.Errorf("insufficient stock for %s", name)
+		}
+
+		subtotal := price * item.Quantity
 		totalAmount += subtotal
 
-		_, err = tx.Exec("UPDATE products SET stock = stock - $1 WHERE id = $2", item.Quantity, item.ProductID)
+		// update stock
+		_, err = tx.Exec(`
+			UPDATE products
+			SET stock = stock - $1
+			WHERE id = $2
+		`, item.Quantity, item.ProductID)
 		if err != nil {
 			return nil, err
 		}
 
 		details = append(details, models.TransactionDetail{
 			ProductID:   item.ProductID,
-			ProductName: productName,
+			ProductName: name,
 			Quantity:    item.Quantity,
 			Subtotal:    subtotal,
 		})
 	}
 
+	// insert transaction + ambil created_at
 	var transactionID int
-	err = tx.QueryRow("INSERT INTO transactions (total_amount) VALUES ($1) RETURNING id", totalAmount).Scan(&transactionID)
+	var createdAt time.Time
+
+	err = tx.QueryRow(`
+		INSERT INTO transactions (total_amount)
+		VALUES ($1)
+		RETURNING id, created_at
+	`, totalAmount).Scan(&transactionID, &createdAt)
+
 	if err != nil {
 		return nil, err
 	}
 
+	// insert details + ambil id masing-masing
 	for i := range details {
-		details[i].TransactionID = transactionID
-		_, err = tx.Exec("INSERT INTO transaction_details (transaction_id, product_id, quantity, subtotal) VALUES ($1, $2, $3, $4)",
-			transactionID, details[i].ProductID, details[i].Quantity, details[i].Subtotal)
+		err = tx.QueryRow(`
+			INSERT INTO transaction_details
+			(transaction_id, product_id, quantity, subtotal)
+			VALUES ($1, $2, $3, $4)
+			RETURNING id
+		`, transactionID, details[i].ProductID, details[i].Quantity, details[i].Subtotal).
+			Scan(&details[i].ID)
+
 		if err != nil {
 			return nil, err
 		}
+
+		details[i].TransactionID = transactionID
 	}
 
 	if err := tx.Commit(); err != nil {
@@ -74,6 +107,7 @@ func (repo *TransactionRepository) CreateTransaction(items []models.CheckoutItem
 	return &models.Transaction{
 		ID:          transactionID,
 		TotalAmount: totalAmount,
+		CreatedAt:   createdAt,
 		Details:     details,
 	}, nil
 }
